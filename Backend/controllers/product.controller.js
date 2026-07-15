@@ -1,17 +1,20 @@
 import Product from "../models/Product.js"
 import redis from "../utils/redisClient.js"
+import logger from "../logger/logger.js"
+import { createProductSchema,zodErrorTree } from "../schema/product.schema.js"
 
 export const createProduct = async(req,res)=>{
 try{
-const {name,templateId,batchNumber,registrationNumber} = req.body
 
+ const validateQuery =  createProductSchema.safeParse(req.body)
+ if(validateQuery.success){
+   const validatedQuery = validateQuery.data
 const product = await Product.create({
-
 companyId:req.userId,
-name,
-templateId,
-batchNumber,
-registrationNumber
+name:validatedQuery.name,
+templateId:validatedQuery.templateId,
+batchNumber:validatedQuery.batchNumber,
+registrationNumber:validatedQuery.registrationNumber
 
 })
 const productsKey = `${req.userId}-products`
@@ -19,7 +22,18 @@ const productsKey = `${req.userId}-products`
  await redis.del(productsKey)
 
 res.status(201).json(product)
+}else{
+  logger.warn(`production validation error - ${zodErrorTree(validateQuery.error)}`,{
+    errorType: `ValidationError`,
+    location: `./controller/product.controller`
+  })
+  res.status(400).json({error: zodErrorTree(validateQuery.error)})
+}
 }catch(err){
+  logger.error(`production creation error - {error}`,{
+    errorType: "OtherError",
+    location: `./controller/product.controller`
+  })
   res.status(500),json({error:err, message:"server errror"})
 }
 
@@ -43,7 +57,11 @@ await redis.set(productsKey,product,{EX:60*24*7})
 res.status(200).json(products)
  }
   }catch(err){
-    res.status(500).json({error:err, message:"server errror"})
+    logger.error(`get products failed - ${error}`,{
+      errorType: "OtherError",
+      location: ",/controller/product.controller"
+    })
+    res.status(500).json({error:err})
   }
 
 }
@@ -69,11 +87,16 @@ res.json(products)
   res.status(401).json({message: "client errror"})
 }
 }catch(err){
-  res.status(500).json({error:err, message:"server errror"})
+      logger.error(`get products  template failed - ${error}`,{
+      errorType: "OtherError",
+      location: ",/controller/product.controller"
+    })
+  res.status(500).json({error:err})
 }
 }
 
 export const deleteProduct = async (req, res) => {
+try{
   const { productId } = req.body
 
   const product = await Product.findById(productId)
@@ -97,8 +120,15 @@ export const deleteProduct = async (req, res) => {
     success: true,
     message: "Product deleted successfully"
   })
-}
+}catch(error){
+  logger.error(`product delete failed - ${error}`,{
+    errorType:"OtherError",
+    location:"/controller/product.controller"
+  })
 
+  res.status(500).json({error:`product delete failed`})
+}
+}
 export const getProductById = async (req, res) => {
   try {
     const { id } = req.params.id;
@@ -119,6 +149,10 @@ export const getProductById = async (req, res) => {
     return res.status(200).json(product);
   }
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    logger.errror(`get products by Id failed - ${error}`,{
+      errorType: "OtherError",
+      location: "/controller/product.controller"
+    })
+    return res.status(500).json({ message: `error fetching products` });
   }
 };

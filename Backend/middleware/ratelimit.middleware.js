@@ -1,4 +1,5 @@
 import redis from "../utils/redisClient.js"
+import logger from "../logger/logger.js"
 const LIMIT = 10
 const REFILL_RATE = 1 // per second
 
@@ -28,6 +29,10 @@ export const rateLimiter = async (req, res, next) => {
     data.lastRefill = now
 
     if (data.tokens <= 0) {
+      logger.warn(`too many request`,{
+        errorType: "OtherError",
+        location :"./middleware/ratelimi.middleware"
+      })
       return res.status(429).json({ message: "Too many requests" })
     }
 
@@ -38,8 +43,11 @@ export const rateLimiter = async (req, res, next) => {
     next()
 
   } catch (err) {
-    // Fail open — don't block requests if Redis has an issue
-    res.status(400).json({message:'request can be completed', error:err})
+    logger.error(`rate limit error - ${err}`,{
+      errorType:"OtherError",
+      location: "./middleware/ratelimi.middleware"
+    })
+    res.status(400).json({ error:err})
     
   }
 }

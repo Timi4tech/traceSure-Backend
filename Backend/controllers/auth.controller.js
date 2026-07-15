@@ -2,19 +2,23 @@ import Company from "../models/company.js"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 import { loginQueue,signupQueue } from "../queues/emailQueue.js"
-import config from "../config/env.Config.js"
+import {env} from "../config/env.Config.js"
 import redis from "../utils/redisClient.js"
-
+import logger from "../logger/logger.js"
+import {createUserSchema, zodErrorTree} from "../schema/user.schema.js"
+import { error } from "console"
 
 export const register = async(req,res)=>{
 try{
-const {name,email,password} = req.body
 
-const hashed = await bcrypt.hash(password,10)
+ const validateQuery = createUserSchema.safeParse(req.body)
+ if (validateQuery.success){
+  const validatedQuery =  validateQuery.data
+const hashed = await bcrypt.hash(validatedQuery.password,10)
 
 const company = await Company.create({
-name,
-email,
+name:validatedQuery.name,
+email:validatedQuery.email,
 password:hashed
 })
 const refreshToken = jwt.sign(
@@ -49,26 +53,40 @@ res.cookie("accessToken", accessToken, {
     email: company.email,
     login: Date.now()
    },
-  { removeOnComplete: 1000, removeOnFail: 5000 }
+  { removeOnComplete: createUserSchema.removeOnComplete, removeOnFail: createUserSchema.removeOnFail }
 );
    
 res.status(201).json(company)
+ }else{
+   res.status(400).json({error:zodErrorTree(validateQuery.error)})
+   logger.warn(`User registration validation failed - ${zodErrorTree(validateQuery.error)}`,{
+    errorType: "ValidationError",
+    location: './controller/auth.controller'
+   })
+ }
 }catch(err){
-  res.status(400).json({error:err, message:'Bad request'})
+  logger.error(`User registration failed`,{
+    errorType: "OtherError",
+    location:"./controller/auth.controller"
+  })
+  res.status(500).json({error:err})
 }
 }
 
 export const login = async(req,res)=>{
 try{
-const {email,password} = req.body
 
+const validateQuery = createUserSchema.safeParse(req.body)
+ if (validateQuery.success){
+ const validatedQuery = validateQuery.data
+ const email = validatedQuery.emali
 const company = await Company.findOne({email})
 
 if(!company){
 return res.status(400).json({message:"Invalid Email", success:false})
 }
 
-const match = await bcrypt.compare(password,company.password)
+const match = await bcrypt.compare(validatedQuery.password,company.password)
 
 if(!match){
 return res.status(400).json({message:"Invalid Password", success:false})
@@ -108,16 +126,27 @@ res.cookie("accessToken", accessToken, {
     email: company.email,
     login: Date.now()
    },
-  { removeOnComplete: 1000, removeOnFail: 5000 },
+  { removeOnComplete: createUserSchema.removeOnComplete, removeOnFail: createUserSchema.removeOnFail },
 );
 
 
- 
 res.status(200).json({ success: true });
+ }else{
+  logger.warn(`login validation failed- ${zodErrorTree(validateQuery.error)}`,{ 
+    errorType: 'ValidatedError',
+    location: "./controller/auth.controller"
+  })
+  res.status(400).json({error: zodErrorTree(validateQuery.error)})
+ }
 }catch(err){
-  res.status(400).json({error:err,message:'Bad request'})
+  logger.error(`login errror - ${zodErrorTree(validateQuery.error)}`,{
+    errorType: "OtherError",
+    location: "./controller/auth.controller"
+  })
+  res.status(500).json({error:err})
 }
 }
+
 
 export const getUser = async(req,res)=>{
 
@@ -137,14 +166,19 @@ res.json(company)
 }
 
 }catch(err){
-
-res.status(500).json({message:"Server error"})
+logger.error(`get user error - ${err}`,{
+  errorType:"OtherError",
+  location:"./controller/auth.controller"
+})
+res.status(500).json({error:err})
 
 }
 
 }
 
 export const logout = async (req, res) => {
+  try{
+    const user = req.user._id
   res.clearCookie("accessToken", {
     httpOnly: true,
     secure: true,
@@ -159,6 +193,11 @@ res.clearCookie("refreshToken", {
     success: true,
     message: "Logged out successfully",
   });
-
+  logger.info(`user_${user} logged out successfully`)
+}catch(err){
+  logger.error(`user_${user} logout failed`,{
+    errorType: "OtherError",
+    location: "./controller/auth.controller"
+  })
 }
-
+}

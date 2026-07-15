@@ -1,4 +1,6 @@
 import { Queue } from 'bullmq';
+import logger from "../logger/logger"
+
 
 const myQueue = new Queue('paint');
 

@@ -3,7 +3,8 @@ import mongoose from "mongoose"
 import cors from "cors"
 import dotenv from "dotenv"
 import cookieParser from "cookie-parser";
-import config from "./config/env.Config.js";
+import {env} from "./config/env.Config.js";
+import {register,metricsMiddleware} from "./middleware/metrics"
 
 
 
@@ -15,6 +16,7 @@ import templateRoutes from "./routes/templateRoutes.js"
 dotenv.config()
 
 const app = express()
+app.use(metricsMiddleware)
 app.set("trust proxy", 1);
 app.use(cors({
   origin: config.frontEndUrl,
@@ -30,10 +32,21 @@ app.use("/api/auth", authRoutes)
 app.use("/api/products", productRoutes)
 app.use("/api/stages", stageRoutes)
 app.use("/api/templates", templateRoutes)
-
-app.listen(config.port, () => {
-console.log(`Server running on port ${config.port}`)
+app.get("/metrics",async(req,res)=>{
+  try{
+    res.send(await register.metrics())
+  }catch(err){
+   logger.error(`metrics monitoring error- $ {err}`,{
+    errorType:"OtherError",
+   })
+   res.status(500).json({error:err})
+  }
 })
 
-mongoose.connect(config.mongoDb)
+
+app.listen(config.port, () => {
+console.log(`Server running on port ${env.PORT}`)
+})
+
+mongoose.connect(env.MONGODB)
 .then(()=>console.log("MongoDB connected"))

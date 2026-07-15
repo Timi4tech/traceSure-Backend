@@ -1,15 +1,12 @@
 import { Worker } from "bullmq";
-import connection from "../config/ioredisConnection.js";
-import transporter from "../config/smtpConfig.js";
+import connection from "../config/ioredis.connection.js";
+import transporter from "../config/smtp.config.js";
 import config from "../config/env.Config.js";
+import logger  from "../logger/logger.js";
 
 
-
-
-
-
-
-export const loginEmailworker = new Worker(
+export const loginEmailworker = async()=>{
+ try{const queue = new Worker(
   "loginQueue",
   async (job) => {
 
@@ -30,4 +27,13 @@ export const loginEmailworker = new Worker(
     removeOnComplete: { count: 1000 },
     removeOnFail: { count: 5000 },
   }
-);
+
+)
+return queue
+}catch(err){
+ logger.eror(`login email worker error - ${err}`, {
+  errorType: "OtherError",
+  location: "./worker/loginemail.worker"
+ })
+}
+};
